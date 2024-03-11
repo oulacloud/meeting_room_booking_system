@@ -17,6 +17,7 @@ async function bootstrap() {
   app.useGlobalFilters(new UnloginFilter());
   app.useGlobalFilters(new CustomExceptionFilter)
 
+  app.enableCors();
 
   const config = new DocumentBuilder()
     .setTitle('会议室预订系统')

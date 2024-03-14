@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Inject, Query, UnauthorizedException, ParseIntPipe, DefaultValuePipe, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Inject, Query, UnauthorizedException, ParseIntPipe, DefaultValuePipe, HttpStatus, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { UserService } from './user.service';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { RedisService } from 'src/redis/redis.service';
@@ -14,6 +14,10 @@ import { generateParseIntPipe } from 'src/utils';
 import { ApiBearerAuth, ApiBody, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { LoginUserVo } from './vo/login-user.vo';
 import { RefreshTokenVo } from './vo/refresh-token.vo';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as path from 'path';
+import { storage } from 'src/my-file-storage';
+
 
 @ApiTags('用户管理模块')
 @Controller('user')
@@ -129,6 +133,7 @@ export class UserController {
     vo.accessToken = this.jwtService.sign({
       userId: vo.userInfo.id,
       username: vo.userInfo.username,
+      email: vo.userInfo.email,
       roles: vo.userInfo.roles,
       permissions: vo.userInfo.permissions
     }, {
@@ -153,6 +158,7 @@ export class UserController {
     vo.accessToken = this.jwtService.sign({
       userId: vo.userInfo.id,
       username: vo.userInfo.username,
+      email: vo.userInfo.email,
       roles: vo.userInfo.roles,
       permissions: vo.userInfo.permissions
     }, {
@@ -204,6 +210,7 @@ export class UserController {
       const access_token = this.jwtService.sign({
         userId: user.id,
         username: user.username,
+        email: user.email,
         roles: user.roles,
         permissions: user.permissions
       }, {
@@ -258,6 +265,7 @@ export class UserController {
       const access_token = this.jwtService.sign({
         userId: user.id,
         username: user.username,
+        email: user.email,
         roles: user.roles,
         permissions: user.permissions
       }, {
@@ -324,7 +332,6 @@ export class UserController {
    * @param passwordDto 
    * @returns 
    */
-  @ApiBearerAuth()
   @ApiBody({
     type: UpdateUserPasswordDto
   })
@@ -333,15 +340,12 @@ export class UserController {
     description: '验证码已失效/不正确'
   })
   @Post(['update_password', 'admin/update_password'])
-  @RequireLogin()
-  async updatePassword(@UserInfo('userId') userId: number, @Body() passwordDto: UpdateUserPasswordDto) {
+  async updatePassword(@Body() passwordDto: UpdateUserPasswordDto) {
 
-    return await this.userService.updatePassword(userId, passwordDto);
-
-
+    return await this.userService.updatePassword(passwordDto);
   }
 
-  @ApiBearerAuth()
+
   @ApiQuery({
     name: 'address',
     description: '邮箱地址',
@@ -351,7 +355,6 @@ export class UserController {
     type: String,
     description: '发送成功'
   })
-  @RequireLogin()
   @Get('update_password/captcha')
   async updatePasswordCaptcha(@Query('address') address: string) {
     const code = Math.random().toString().slice(2, 8);
@@ -367,8 +370,15 @@ export class UserController {
 
   }
 
+
+  @ApiBearerAuth()
+  @ApiResponse({
+    type: String,
+    description: '发送成功'
+  })
+  @RequireLogin()
   @Get('update/captcha')
-  async updateCaptcha(@Query('address') address: string) {
+  async updateCaptcha(@UserInfo('email') address: string) {
     const code = Math.random().toString().slice(2, 8);
 
     await this.redisService.set(`update_user_captcha_${address}`, code, 10 * 60);
@@ -398,6 +408,7 @@ export class UserController {
   @Post(['update', 'admin/update'])
   @RequireLogin()
   async update(@UserInfo('userId') userId: number, @Body() updateUserDto: UpdateUserDto) {
+    console.log("=======>",updateUserDto)
     return await this.userService.update(userId, updateUserDto);
   }
 
@@ -452,7 +463,6 @@ export class UserController {
     description: '用户列表'
   })
   @RequireLogin()
-
   @Get('list')
   async list(
     @Query('pageNo', new DefaultValuePipe(1), generateParseIntPipe('pageNo')) pageNo: number,
@@ -463,4 +473,20 @@ export class UserController {
   ) {
     return await this.userService.findUsers(username, nickName, email, pageNo, pageSize);
   }
+
+
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('avatar', {
+    dest: 'uploads',
+    storage: storage,
+    limits: {
+      fileSize: 1024 * 1024 * 3
+    }
+  }))
+  uploadFile(@UploadedFile() avatar: Express.Multer.File) {
+    console.log('file', avatar);
+    return avatar.path.split("\\")[1];
+  }
+
 }
